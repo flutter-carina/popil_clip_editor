@@ -9,8 +9,8 @@ Future<String?> mergeVideosSideBySide(
     final outputPath =
         '${dir.path}/side_by_side_${DateTime.now().millisecondsSinceEpoch}.mp4';
 
-    final command = '-i "$video1Path" -i "$video2Path" '
-        '-filter_complex "[0:v][1:v]hstack=inputs=2[v]" '
+   final command = '-i "$video1Path" -i "$video2Path" '
+        '-filter_complex "[0:v]scale=-1:720[vid1];[1:v]scale=-1:720[vid2];[vid1][vid2]hstack=inputs=2[v]" '
         '-map "[v]" -c:v libx264 -crf 23 -preset ultrafast "$outputPath"';
 
     final session = await FFmpegKit.execute(command);
