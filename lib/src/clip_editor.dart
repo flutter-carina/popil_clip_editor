@@ -144,8 +144,8 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
   Future<void> _exportWithProgress() async {
     final builder = VideoEditorBuilder(videoPath: _videoPath)
         .trim(
-          startTimeMs: (_startValue * 1000).toInt(),
-          endTimeMs: (_endValue * 1000).toInt(),
+          startTimeMs: (_startValue).toInt(),
+          endTimeMs: (_endValue).toInt(),
         )
         .compress(resolution: VideoResolution.p720);
 
