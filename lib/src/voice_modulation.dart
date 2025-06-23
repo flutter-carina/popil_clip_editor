@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:popil_clip_editor/src/widgets/app_slider_shape.dart';
 import '../popil_clip_editor.dart';
+import 'widgets/app_toggle_switch.dart';
 
 class VoiceModulationEditor extends StatefulWidget {
   const VoiceModulationEditor({super.key});
@@ -92,9 +95,18 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
       filters += ',acrusher=level_in=1:level_out=1:bits=8:mode=log';
     }
 
-     final cmd = '-y -i "$inputAudio" -af "$filters" -c:a libmp3lame -f mp3 "$outputAudio"';
+    final cmd =
+        '-y -i "$inputAudio" -af "$filters" -c:a libmp3lame -f mp3 "$outputAudio"';
 
     var session = await FFmpegKit.execute(cmd);
+
+    final file = File(outputAudio!);
+    if (!await file.exists() || await file.length() == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Audio processing failed')),
+      );
+      return;
+    }
 
     final returnCode = await session.getReturnCode();
     print("Return Code: $returnCode");
@@ -114,50 +126,19 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
           textAlign: TextAlign.left,
         ),
         const Spacer(),
-        customSwitch(value, onChanged)
+        AppToggleSwitch(
+            value: value,
+            onChanged: onChanged,
+            assetPath: 'assets/toggle.png',
+            assetPackage: 'popil_clip_editor')
       ],
-    );
-  }
-
-  Widget customSwitch(bool value, Function(bool) onChanged) {
-    return GestureDetector(
-      onTap: () => onChanged(!value),
-      child: SizedBox(
-        height: 40,
-        width: 65,
-        child: Stack(
-          children: [
-            Align(
-              alignment: Alignment.center,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: 60,
-                height: 34,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: value ? Colors.black26 : Colors.grey.shade400,
-                ),
-              ),
-            ),
-            Positioned(
-              top: 0,
-              bottom: 0,
-              left: value ? 0 : null,
-              right: value ? null : 0,
-              child: Image.asset(
-                'assets/toggle.png',
-                package: 'popil_clip_editor',
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Color(0xFF2D3036),
       appBar: AppBar(title: const Text('Voice Modulator')),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -172,8 +153,13 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                   style: const TextStyle(fontSize: 12)),
             const SizedBox(height: 20),
             DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
+              child: DropdownButtonFormField<String>(
                 isExpanded: true,
+                decoration: const InputDecoration(
+                  hintText: 'Select Voice Preset',
+                  prefixIcon: Icon(Icons.mic),
+                  border: OutlineInputBorder(),
+                ),
                 value: selectedPreset ?? 'None',
                 items: presets
                     .map((p) => DropdownMenuItem(value: p, child: Text(p)))
@@ -186,7 +172,7 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                 },
               ),
             ),
-            // Divider(),
+            const SizedBox(height: 20),
             _buildKarokeWidget,
             const SizedBox(height: 20),
             ElevatedButton.icon(
@@ -195,23 +181,25 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
               label: const Text("Apply Effects"),
             ),
             if (outputAudio != null)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  const Text("▶️ Preview"),
-                  IconButton(
-                    icon: const Icon(Icons.play_arrow),
-                    onPressed: () => playAudio(outputAudio!),
+              ListTile(
+                onTap: () => playAudio(outputAudio!),
+                leading: IconButton(
+                  icon: const Icon(Icons.play_arrow),
+                  onPressed: () => playAudio(outputAudio!),
+                ),
+                title: Text(
+                  outputAudio?.split("/").last ?? '',
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: IconButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  icon: Icon(
+                    Icons.arrow_forward_rounded,
                   ),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      outputAudio?.split("/").last ?? '',
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  )
-                ],
-              ),
+                ),
+              )
           ],
         ),
       ),
@@ -219,13 +207,14 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   }
 
   Future<void> playAudio(String path) async {
-    print("playerpath $path");
+    await player.stop();
     await player.setFilePath(path);
     await player.play();
   }
 
   Widget get _buildKarokeWidget => Container(
         padding: const EdgeInsets.all(10),
+        color: Color(0xFFD9D9D9).withOpacity(0.5),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -389,4 +378,11 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
           ],
         ),
       );
+
+  @override
+  void dispose() {
+    // TODO: implement dispose
+    player.dispose();
+    super.dispose();
+  }
 }
