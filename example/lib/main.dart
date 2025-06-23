@@ -18,6 +18,7 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const EditorExample(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
@@ -35,26 +36,28 @@ class _EditorExampleState extends State<EditorExample> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('PopilClipEditor')),
-      body: pickedPath == null
-          ? Center(
-              child: ElevatedButton(
-                onPressed: () async {
-                  final result = await FilePicker.platform.pickFiles(
-                    type: FileType.video,
-                  );
-                  if (result != null) {
-                    setState(() {
-                      pickedPath = result.files.single.path!;
-                    });
-                  }
-                },
-                child: const Text('Pick a Video'),
-              ),
-            )
-          : PopilClipEditor(videoFilePath: pickedPath!,onExport: (exportedPath) {
-            print("exportedPath========> $exportedPath");
-          },),
-    );
+        appBar: AppBar(title: const Text('PopilClipEditor')),
+        body: VoiceModulationEditor()
+
+        //  pickedPath == null
+        //     ? Center(
+        //         child: ElevatedButton(
+        //           onPressed: () async {
+        //             final result = await FilePicker.platform.pickFiles(
+        //               type: FileType.video,
+        //             );
+        //             if (result != null) {
+        //               setState(() {
+        //                 pickedPath = result.files.single.path!;
+        //               });
+        //             }
+        //           },
+        //           child: const Text('Pick a Video'),
+        //         ),
+        //       )
+        //     : PopilClipEditor(videoFilePath: pickedPath!,onExport: (exportedPath) {
+        //       print("exportedPath========> $exportedPath");
+        //     },),
+        );
   }
 }

@@ -8,6 +8,8 @@ import 'package:popil_clip_editor/src/widgets/filter_card.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_trimmer/video_trimmer.dart';
 
+import 'voice_modulation.dart';
+
 class PopilClipEditor extends StatefulWidget {
   final String videoFilePath;
 
@@ -182,20 +184,16 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
   }
 
   @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
           if (_controller != null && _controller!.value.isInitialized)
-            AspectRatio(
-              aspectRatio: _controller!.value.aspectRatio,
-              child: VideoPlayer(_controller!),
+            Center(
+              child: AspectRatio(
+                aspectRatio: _controller!.value.aspectRatio,
+                child: VideoPlayer(_controller!),
+              ),
             ),
           const SizedBox(height: 16),
           Text(_status, style: const TextStyle(fontSize: 16)),
@@ -300,6 +298,17 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
             //   ),
             // ),
             IconButton(
+              icon: const Icon(Icons.music_note_rounded),
+              tooltip: 'Voice Modulation',
+              onPressed: () {
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VoiceModulationEditor(),
+                    ));
+              },
+            ),
+            IconButton(
               icon: const Icon(Icons.flip),
               tooltip: 'Flip Horizontal',
               onPressed: () => _performEdit(
@@ -325,7 +334,7 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
             mainAxisAlignment: MainAxisAlignment.end,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 "Filters",
                 style: TextStyle(
                     color: Colors.white,
@@ -359,4 +368,10 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
           ),
         ),
       );
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
 }
