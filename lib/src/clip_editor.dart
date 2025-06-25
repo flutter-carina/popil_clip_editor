@@ -300,12 +300,26 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
             IconButton(
               icon: const Icon(Icons.music_note_rounded),
               tooltip: 'Voice Modulation',
-              onPressed: () {
-                Navigator.push(
+              onPressed: () async {
+                final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => VoiceModulationEditor(),
+                      builder: (context) => VoiceModulationEditor(
+                        videoPath: _videoPath,
+                      ),
                     ));
+
+                setState(() {
+                  isLoading = true;
+                });
+                if (result != null && result is String) {
+                  _updateVideo(result);
+                  _status = 'Video processed: $result';
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Modulated video: $result')),
+                  );
+                }
               },
             ),
             IconButton(

@@ -9,7 +9,8 @@ import '../popil_clip_editor.dart';
 import 'widgets/app_toggle_switch.dart';
 
 class VoiceModulationEditor extends StatefulWidget {
-  const VoiceModulationEditor({super.key});
+  final String videoPath;
+  VoiceModulationEditor({super.key, required this.videoPath});
 
   @override
   State<VoiceModulationEditor> createState() => _VoiceModulationEditorState();
@@ -23,8 +24,9 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   bool reverb = false;
   bool distortion = false;
   String? selectedPreset;
-  String? inputAudio;
-  String? outputAudio;
+  String? extractedAudio; // Path to extracted audio
+  String? outputAudio; // Path to modulated audio
+  String? outputVideo; // Path to final video (if re-muxed)
 
   final List<String> presets = ['None', 'Robot', 'Alien', 'Monster', 'Radio'];
 
@@ -66,18 +68,38 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     setState(() {});
   }
 
-  Future<void> pickAudio() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
-    if (result != null) {
-      inputAudio = result.files.single.path!;
-      setState(() {});
+  Future<void> extractAudioFromVideo() async {
+    final dir = await getApplicationDocumentsDirectory();
+    extractedAudio = '${dir.path}/extracted_audio.mp3';
+
+    final cmd = '-y -i "${widget.videoPath}" -vn -acodec mp3 "$extractedAudio"';
+    var session = await FFmpegKit.execute(cmd);
+
+    final returnCode = await session.getReturnCode();
+    if (returnCode != 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to extract audio from video')),
+      );
+      return;
     }
+
+    if (!await File(extractedAudio!).exists()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Extracted audio file not found')),
+      );
+      return;
+    }
+
+    setState(() {});
   }
 
   Future<void> processAudio() async {
-    if (inputAudio == null) return;
-
-    print("InputPath $inputAudio");
+    if (extractedAudio == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audio extracted from video')),
+      );
+      return;
+    }
 
     final dir = await getApplicationDocumentsDirectory();
     outputAudio = '${dir.path}/modulated_audio.mp3';
@@ -96,7 +118,7 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     }
 
     final cmd =
-        '-y -i "$inputAudio" -af "$filters" -c:a libmp3lame -f mp3 "$outputAudio"';
+        '-y -i "$extractedAudio" -af "$filters" -c:a libmp3lame -f mp3 "$outputAudio"';
 
     var session = await FFmpegKit.execute(cmd);
 
@@ -111,28 +133,40 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     final returnCode = await session.getReturnCode();
     print("Return Code: $returnCode");
 
-    print("session $session");
     setState(() {});
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Processed to: $outputAudio')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Processed audio to: $outputAudio')),
+    );
   }
 
-  Widget buildSwitch(String label, bool value, void Function(bool) onChanged) {
-    return Row(
-      children: [
-        Text(
-          label,
-          textAlign: TextAlign.left,
-        ),
-        const Spacer(),
-        AppToggleSwitch(
-            value: value,
-            onChanged: onChanged,
-            assetPath: 'assets/toggle.png',
-            assetPackage: 'popil_clip_editor')
-      ],
+  Future<void> mergeAudioWithVideo() async {
+    if (outputAudio == null) return;
+
+    final dir = await getApplicationDocumentsDirectory();
+    outputVideo = '${dir.path}/modulated_video.mp4';
+
+    final cmd =
+        '-y -i "${widget.videoPath}" -i "$outputAudio" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "$outputVideo"';
+    var session = await FFmpegKit.execute(cmd);
+
+    final returnCode = await session.getReturnCode();
+    if (returnCode != 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to merge audio with video')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Processed video to: $outputVideo')),
     );
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    extractAudioFromVideo();
   }
 
   @override
@@ -144,14 +178,6 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
         padding: const EdgeInsets.all(16),
         child: ListView(
           children: [
-            ElevatedButton(
-              onPressed: pickAudio,
-              child: const Text("🎙️ Pick Voice Recording"),
-            ),
-            if (inputAudio != null)
-              Text("Selected: ${inputAudio?.split("/").last}",
-                  style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 20),
             DropdownButtonHideUnderline(
               child: DropdownButtonFormField<String>(
                 isExpanded: true,
@@ -192,8 +218,9 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 trailing: IconButton(
-                  onPressed: () {
-                    Navigator.pop(context);
+                  onPressed: () async {
+                    await mergeAudioWithVideo();
+                    Navigator.pop(context, outputVideo);
                   },
                   icon: Icon(
                     Icons.arrow_forward_rounded,
@@ -378,6 +405,23 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
           ],
         ),
       );
+
+  Widget buildSwitch(String label, bool value, void Function(bool) onChanged) {
+    return Row(
+      children: [
+        Text(
+          label,
+          textAlign: TextAlign.left,
+        ),
+        const Spacer(),
+        AppToggleSwitch(
+            value: value,
+            onChanged: onChanged,
+            assetPath: 'assets/toggle.png',
+            assetPackage: 'popil_clip_editor')
+      ],
+    );
+  }
 
   @override
   void dispose() {
