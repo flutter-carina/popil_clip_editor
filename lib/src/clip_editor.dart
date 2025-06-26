@@ -309,17 +309,23 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
                       ),
                     ));
 
-                setState(() {
+               
+                if (result != null && result is String) {
+                   setState(() {
                   isLoading = true;
                 });
-                if (result != null && result is String) {
                   _updateVideo(result);
                   _status = 'Video processed: $result';
 
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Modulated video: $result')),
                   );
+                  
+                  setState(() {
+                  isLoading = true;
+                });
                 }
+
               },
             ),
             IconButton(

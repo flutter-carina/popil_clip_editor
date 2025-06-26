@@ -73,19 +73,23 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     extractedAudio = '${dir.path}/extracted_audio.mp3';
 
     final cmd = '-y -i "${widget.videoPath}" -vn -acodec mp3 "$extractedAudio"';
-    var session = await FFmpegKit.execute(cmd);
+    final session = await FFmpegKit.execute(cmd);
 
     final returnCode = await session.getReturnCode();
-    if (returnCode != 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to extract audio from video')),
-      );
-      return;
+    debugPrint('FFmpeg return code: $returnCode');
+
+    final outputFile = File(extractedAudio!);
+    final fileExists = await outputFile.exists();
+    debugPrint('Extracted file exists: $fileExists');
+
+    if (fileExists) {
+      final fileStat = await outputFile.stat();
+      debugPrint('Extracted audio size: ${fileStat.size} bytes');
     }
 
-    if (!await File(extractedAudio!).exists()) {
+    if (returnCode?.isValueSuccess() != true || !fileExists) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Extracted audio file not found')),
+        const SnackBar(content: Text('Failed to extract audio from video')),
       );
       return;
     }
@@ -124,9 +128,9 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
 
     final file = File(outputAudio!);
     if (!await file.exists() || await file.length() == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Audio processing failed')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Audio processing failed')));
       return;
     }
 
@@ -134,9 +138,9 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     print("Return Code: $returnCode");
 
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Processed audio to: $outputAudio')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Processed audio to: $outputAudio')));
   }
 
   Future<void> mergeAudioWithVideo() async {
@@ -157,9 +161,9 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Processed video to: $outputVideo')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Processed video to: $outputVideo')));
     setState(() {});
   }
 
@@ -187,9 +191,10 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                   border: OutlineInputBorder(),
                 ),
                 value: selectedPreset ?? 'None',
-                items: presets
-                    .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                    .toList(),
+                items:
+                    presets
+                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                        .toList(),
                 onChanged: (value) {
                   if (value != null) {
                     selectedPreset = value;
@@ -222,11 +227,9 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                     await mergeAudioWithVideo();
                     Navigator.pop(context, outputVideo);
                   },
-                  icon: Icon(
-                    Icons.arrow_forward_rounded,
-                  ),
+                  icon: Icon(Icons.arrow_forward_rounded),
                 ),
-              )
+              ),
           ],
         ),
       ),
@@ -240,185 +243,175 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   }
 
   Widget get _buildKarokeWidget => Container(
-        padding: const EdgeInsets.all(10),
-        color: Color(0xFFD9D9D9).withOpacity(0.5),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Flexible(
-              child: Column(
-                spacing: 10,
-                children: [
-                  Transform(
-                    alignment: FractionalOffset.center,
-                    transform: new Matrix4.identity()
-                      ..rotateZ(270 * 3.1415927 / 180),
-                    child: Column(
-                      spacing: 5,
-                      children: [
-                        SliderTheme(
-                          data: const SliderThemeData(
-                            thumbShape: AppSliderShape(thumbRadius: 10),
-                          ),
-                          child: Slider(
-                            value: pitch,
-                            min: 0.5,
-                            max: 2.0,
-                            activeColor: Colors.black54,
-                            inactiveColor: Colors.black54,
-                            onChanged: (v) {
-                              setState(() => pitch = v);
-                            },
-                          ),
-                        ),
-                        SliderTheme(
-                          data: const SliderThemeData(
-                            thumbShape: AppSliderShape(thumbRadius: 10),
-                          ),
-                          child: Slider(
-                            value: tempo,
-                            min: 0.5,
-                            max: 2.0,
-                            activeColor: Colors.black54,
-                            inactiveColor: Colors.black54,
-                            onChanged: (v) {
-                              setState(() => tempo = v);
-                            },
-                          ),
-                        ),
-                        SliderTheme(
-                          data: const SliderThemeData(
-                            thumbShape: AppSliderShape(thumbRadius: 10),
-                          ),
-                          child: Slider(
-                            value: formant,
-                            min: 0.5,
-                            max: 2.0,
-                            activeColor: Colors.black54,
-                            inactiveColor: Colors.black54,
-                            onChanged: (v) {
-                              setState(() => formant = v);
-                            },
-                          ),
-                        ),
-                      ],
+    padding: const EdgeInsets.all(10),
+    color: Color(0xFFD9D9D9).withOpacity(0.5),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Flexible(
+          child: Column(
+            spacing: 10,
+            children: [
+              Transform(
+                alignment: FractionalOffset.center,
+                transform:
+                    new Matrix4.identity()..rotateZ(270 * 3.1415927 / 180),
+                child: Column(
+                  spacing: 5,
+                  children: [
+                    SliderTheme(
+                      data: const SliderThemeData(
+                        thumbShape: AppSliderShape(thumbRadius: 10),
+                      ),
+                      child: Slider(
+                        value: pitch,
+                        min: 0.5,
+                        max: 2.0,
+                        activeColor: Colors.black54,
+                        inactiveColor: Colors.black54,
+                        onChanged: (v) {
+                          setState(() => pitch = v);
+                        },
+                      ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Row(
-                      spacing: 8,
-                      mainAxisSize: MainAxisSize.max,
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        SizedBox(
-                          height: 28,
-                          child: Text(
-                            "Pitch\n${pitch.toStringAsFixed(2)}",
-                            style: const TextStyle(fontSize: 7.4),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        SizedBox(
-                          height: 28,
-                          child: Text(
-                            "Tempo\n${tempo.toStringAsFixed(2)}",
-                            style: const TextStyle(fontSize: 7.4),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        SizedBox(
-                          height: 28,
-                          child: Text(
-                            "Reverb\n${formant.toStringAsFixed(2)}",
-                            style: const TextStyle(fontSize: 7.4),
-                            textAlign: TextAlign.center,
-                          ),
-                        )
-                      ],
+                    SliderTheme(
+                      data: const SliderThemeData(
+                        thumbShape: AppSliderShape(thumbRadius: 10),
+                      ),
+                      child: Slider(
+                        value: tempo,
+                        min: 0.5,
+                        max: 2.0,
+                        activeColor: Colors.black54,
+                        inactiveColor: Colors.black54,
+                        onChanged: (v) {
+                          setState(() => tempo = v);
+                        },
+                      ),
                     ),
-                  )
-                ],
+                    SliderTheme(
+                      data: const SliderThemeData(
+                        thumbShape: AppSliderShape(thumbRadius: 10),
+                      ),
+                      child: Slider(
+                        value: formant,
+                        min: 0.5,
+                        max: 2.0,
+                        activeColor: Colors.black54,
+                        inactiveColor: Colors.black54,
+                        onChanged: (v) {
+                          setState(() => formant = v);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            // Container(
-            //     padding: const EdgeInsets.only(
-            //         top: 3, bottom: 3, left: 10, right: 10),
-            //     decoration: BoxDecoration(
-            //         // gradient: AppColors.primaryBgGradient(),
-            //         borderRadius: BorderRadius.circular(8)),
-            //     child: Column(
-            //       mainAxisSize: MainAxisSize.min,
-            //       children: List.generate(
-            //         5,
-            //         (index) => Padding(
-            //           padding: EdgeInsets.symmetric(vertical: 2.px),
-            //           child: SizedBox(
-            //             width: 30.px,
-            //             height: 30.px,
-            //             child: NeumorphicButton(
-            //               style: NeumorphicStyle(
-            //                 shape: NeumorphicShape.convex,
-            //                 color: const Color.fromARGB(137, 0, 0, 0),
-            //                 border: NeumorphicBorder(
-            //                     color: Colors.black, width: 2.px),
-            //                 boxShape: const NeumorphicBoxShape.circle(),
-            //               ),
-            //               padding: EdgeInsets.zero,
-            //               child: Center(
-            //                 child: Text(
-            //                   (index - 2).toString(),
-            //                   style: TextStyle(
-            //                     fontSize: 11.px, // Fixed font size
-            //                     color: Colors.white,
-            //                   ),
-            //                 ),
-            //               ),
-            //             ),
-            //           ),
-            //         ),
-            //       ),
-            //     )),
-            Flexible(
-              child: Column(
-                spacing: 8,
-                children: [
-                  buildSwitch(
-                    "Echo",
-                    echo,
-                    (v) => setState(() => echo = v),
-                  ),
-                  buildSwitch(
-                    "Reverb",
-                    reverb,
-                    (v) => setState(() => reverb = v),
-                  ),
-                  buildSwitch(
-                    "Distortion",
-                    distortion,
-                    (v) => setState(() => distortion = v),
-                  ),
-                ],
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Row(
+                  spacing: 8,
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    SizedBox(
+                      height: 28,
+                      child: Text(
+                        "Pitch\n${pitch.toStringAsFixed(2)}",
+                        style: const TextStyle(fontSize: 7.4),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    SizedBox(
+                      height: 28,
+                      child: Text(
+                        "Tempo\n${tempo.toStringAsFixed(2)}",
+                        style: const TextStyle(fontSize: 7.4),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    SizedBox(
+                      height: 28,
+                      child: Text(
+                        "Reverb\n${formant.toStringAsFixed(2)}",
+                        style: const TextStyle(fontSize: 7.4),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      );
+        // Container(
+        //     padding: const EdgeInsets.only(
+        //         top: 3, bottom: 3, left: 10, right: 10),
+        //     decoration: BoxDecoration(
+        //         // gradient: AppColors.primaryBgGradient(),
+        //         borderRadius: BorderRadius.circular(8)),
+        //     child: Column(
+        //       mainAxisSize: MainAxisSize.min,
+        //       children: List.generate(
+        //         5,
+        //         (index) => Padding(
+        //           padding: EdgeInsets.symmetric(vertical: 2.px),
+        //           child: SizedBox(
+        //             width: 30.px,
+        //             height: 30.px,
+        //             child: NeumorphicButton(
+        //               style: NeumorphicStyle(
+        //                 shape: NeumorphicShape.convex,
+        //                 color: const Color.fromARGB(137, 0, 0, 0),
+        //                 border: NeumorphicBorder(
+        //                     color: Colors.black, width: 2.px),
+        //                 boxShape: const NeumorphicBoxShape.circle(),
+        //               ),
+        //               padding: EdgeInsets.zero,
+        //               child: Center(
+        //                 child: Text(
+        //                   (index - 2).toString(),
+        //                   style: TextStyle(
+        //                     fontSize: 11.px, // Fixed font size
+        //                     color: Colors.white,
+        //                   ),
+        //                 ),
+        //               ),
+        //             ),
+        //           ),
+        //         ),
+        //       ),
+        //     )),
+        Flexible(
+          child: Column(
+            spacing: 8,
+            children: [
+              buildSwitch("Echo", echo, (v) => setState(() => echo = v)),
+              buildSwitch("Reverb", reverb, (v) => setState(() => reverb = v)),
+              buildSwitch(
+                "Distortion",
+                distortion,
+                (v) => setState(() => distortion = v),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget buildSwitch(String label, bool value, void Function(bool) onChanged) {
     return Row(
       children: [
-        Text(
-          label,
-          textAlign: TextAlign.left,
-        ),
+        Text(label, textAlign: TextAlign.left),
         const Spacer(),
         AppToggleSwitch(
-            value: value,
-            onChanged: onChanged,
-            assetPath: 'assets/toggle.png',
-            assetPackage: 'popil_clip_editor')
+          value: value,
+          onChanged: onChanged,
+          assetPath: 'assets/toggle.png',
+          assetPackage: 'popil_clip_editor',
+        ),
       ],
     );
   }
