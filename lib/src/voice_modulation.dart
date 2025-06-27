@@ -24,9 +24,10 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   bool reverb = false;
   bool distortion = false;
   String? selectedPreset;
-  String? extractedAudio; // Path to extracted audio
-  String? outputAudio; // Path to modulated audio
-  String? outputVideo; // Path to final video (if re-muxed)
+  String? extractedAudio;
+  String? outputAudio;
+  String? outputVideo;
+  bool isExtracting = true;
 
   final List<String> presets = ['None', 'Robot', 'Alien', 'Monster', 'Radio'];
 
@@ -69,7 +70,11 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   }
 
   Future<void> extractAudioFromVideo() async {
-    final dir = await getApplicationDocumentsDirectory();
+    setState(() {
+      isExtracting = true;
+    });
+
+    final dir = await getTemporaryDirectory();
     extractedAudio = '${dir.path}/extracted_audio.mp3';
 
     final cmd = '-y -i "${widget.videoPath}" -vn -acodec mp3 "$extractedAudio"';
@@ -91,10 +96,15 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to extract audio from video')),
       );
+      setState(() {
+        isExtracting = false;
+      });
       return;
     }
 
-    setState(() {});
+    setState(() {
+      isExtracting = false;
+    });
   }
 
   Future<void> processAudio() async {
@@ -105,7 +115,7 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
       return;
     }
 
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await getTemporaryDirectory();
     outputAudio = '${dir.path}/modulated_audio.mp3';
 
     String filters = 'asetrate=44100*${pitch.toStringAsFixed(2)},';
@@ -146,24 +156,42 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   Future<void> mergeAudioWithVideo() async {
     if (outputAudio == null) return;
 
-    final dir = await getApplicationDocumentsDirectory();
+    final dir = await getTemporaryDirectory();
+    final aacPath = '${dir.path}/converted_audio.aac';
     outputVideo = '${dir.path}/modulated_video.mp4';
 
-    final cmd =
-        '-y -i "${widget.videoPath}" -i "$outputAudio" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "$outputVideo"';
-    var session = await FFmpegKit.execute(cmd);
+    // Step 1: Convert MP3 to AAC
+    final convertCmd = '-y -i "$outputAudio" -c:a aac -b:a 128k "$aacPath"';
+    var convertSession = await FFmpegKit.execute(convertCmd);
+    final convertReturnCode = await convertSession.getReturnCode();
 
-    final returnCode = await session.getReturnCode();
-    if (returnCode != 0) {
+    if (convertReturnCode?.isValueSuccess() != true) {
+      final log = await convertSession.getAllLogsAsString();
+      debugPrint('Audio conversion failed:\n$log');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to convert audio to AAC')),
+      );
+      return;
+    }
+
+    // Step 2: Merge converted AAC with video
+    final mergeCmd =
+        '-y -i "${widget.videoPath}" -i "$aacPath" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "$outputVideo"';
+    var mergeSession = await FFmpegKit.execute(mergeCmd);
+    final mergeReturnCode = await mergeSession.getReturnCode();
+
+    if (mergeReturnCode?.isValueSuccess() != true) {
+      final log = await mergeSession.getAllLogsAsString();
+      debugPrint('Merging failed:\n$log');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Failed to merge audio with video')),
       );
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Processed video to: $outputVideo')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Processed video saved to:\n$outputVideo')),
+    );
     setState(() {});
   }
 
@@ -178,233 +206,274 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     return Scaffold(
       backgroundColor: Color(0xFF2D3036),
       appBar: AppBar(title: const Text('Voice Modulator')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ListView(
-          children: [
-            DropdownButtonHideUnderline(
-              child: DropdownButtonFormField<String>(
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  hintText: 'Select Voice Preset',
-                  prefixIcon: Icon(Icons.mic),
-                  border: OutlineInputBorder(),
-                ),
-                value: selectedPreset ?? 'None',
-                items:
-                    presets
-                        .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                        .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    selectedPreset = value;
-                    applyPreset(value);
-                  }
-                },
+      body: isExtracting
+          ? const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Extracting audio...',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              ),
+            )
+          : Padding(
+              padding: const EdgeInsets.all(16),
+              child: ListView(
+                children: [
+                  // DropdownButtonHideUnderline(
+                  //   child: DropdownButtonFormField<String>(
+                  //     isExpanded: true,
+                  //     decoration: const InputDecoration(
+                  //       hintText: 'Select Voice Preset',
+                  //       prefixIcon: Icon(Icons.mic),
+                  //       border: OutlineInputBorder(),
+                  //     ),
+                  //     value: selectedPreset ?? 'None',
+                  //     items: presets
+                  //         .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                  //         .toList(),
+                  //     onChanged: (value) {
+                  //       if (value != null) {
+                  //         selectedPreset = value;
+                  //         applyPreset(value);
+                  //       }
+                  //     },
+                  //   ),
+                  // ),
+                  const SizedBox(height: 20),
+                  _buildKarokeWidget,
+                  const SizedBox(height: 20),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFFFEA500),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    onPressed: processAudio,
+                    child: const Text(
+                      "Apply Effects",
+                      style: TextStyle(color: Colors.black),
+                    ),
+                  ),
+                  if (outputAudio != null)
+                    ListTile(
+                      onTap: () => playAudio(outputAudio!),
+                      leading: IconButton(
+                        icon: Icon(
+                          player.playing ? Icons.stop : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                        onPressed: () => playAudio(outputAudio!),
+                      ),
+                      title: Text(
+                        outputAudio?.split("/").last ?? '',
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 16),
+                      ),
+                      trailing: IconButton(
+                        onPressed: () async {
+                          await mergeAudioWithVideo();
+                          Navigator.pop(context, outputVideo);
+                        },
+                        icon: Icon(
+                          Icons.arrow_forward_rounded,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
-            _buildKarokeWidget,
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: processAudio,
-              icon: const Icon(Icons.tune),
-              label: const Text("Apply Effects"),
-            ),
-            if (outputAudio != null)
-              ListTile(
-                onTap: () => playAudio(outputAudio!),
-                leading: IconButton(
-                  icon: const Icon(Icons.play_arrow),
-                  onPressed: () => playAudio(outputAudio!),
-                ),
-                title: Text(
-                  outputAudio?.split("/").last ?? '',
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: IconButton(
-                  onPressed: () async {
-                    await mergeAudioWithVideo();
-                    Navigator.pop(context, outputVideo);
-                  },
-                  icon: Icon(Icons.arrow_forward_rounded),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 
   Future<void> playAudio(String path) async {
-    await player.stop();
-    await player.setFilePath(path);
-    await player.play();
+    if (player.playing) {
+      await player.stop();
+    } else {
+      await player.setFilePath(path);
+      await player.play();
+    }
   }
 
   Widget get _buildKarokeWidget => Container(
-    padding: const EdgeInsets.all(10),
-    color: Color(0xFFD9D9D9).withOpacity(0.5),
-    child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Flexible(
-          child: Column(
-            spacing: 10,
-            children: [
-              Transform(
-                alignment: FractionalOffset.center,
-                transform:
-                    new Matrix4.identity()..rotateZ(270 * 3.1415927 / 180),
-                child: Column(
-                  spacing: 5,
-                  children: [
-                    SliderTheme(
-                      data: const SliderThemeData(
-                        thumbShape: AppSliderShape(thumbRadius: 10),
-                      ),
-                      child: Slider(
-                        value: pitch,
-                        min: 0.5,
-                        max: 2.0,
-                        activeColor: Colors.black54,
-                        inactiveColor: Colors.black54,
-                        onChanged: (v) {
-                          setState(() => pitch = v);
-                        },
-                      ),
-                    ),
-                    SliderTheme(
-                      data: const SliderThemeData(
-                        thumbShape: AppSliderShape(thumbRadius: 10),
-                      ),
-                      child: Slider(
-                        value: tempo,
-                        min: 0.5,
-                        max: 2.0,
-                        activeColor: Colors.black54,
-                        inactiveColor: Colors.black54,
-                        onChanged: (v) {
-                          setState(() => tempo = v);
-                        },
-                      ),
-                    ),
-                    SliderTheme(
-                      data: const SliderThemeData(
-                        thumbShape: AppSliderShape(thumbRadius: 10),
-                      ),
-                      child: Slider(
-                        value: formant,
-                        min: 0.5,
-                        max: 2.0,
-                        activeColor: Colors.black54,
-                        inactiveColor: Colors.black54,
-                        onChanged: (v) {
-                          setState(() => formant = v);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Row(
-                  spacing: 8,
-                  mainAxisSize: MainAxisSize.max,
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    SizedBox(
-                      height: 28,
-                      child: Text(
-                        "Pitch\n${pitch.toStringAsFixed(2)}",
-                        style: const TextStyle(fontSize: 7.4),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    SizedBox(
-                      height: 28,
-                      child: Text(
-                        "Tempo\n${tempo.toStringAsFixed(2)}",
-                        style: const TextStyle(fontSize: 7.4),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    SizedBox(
-                      height: 28,
-                      child: Text(
-                        "Reverb\n${formant.toStringAsFixed(2)}",
-                        style: const TextStyle(fontSize: 7.4),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: Color(0xFFD9D9D9).withOpacity(0.1),
         ),
-        // Container(
-        //     padding: const EdgeInsets.only(
-        //         top: 3, bottom: 3, left: 10, right: 10),
-        //     decoration: BoxDecoration(
-        //         // gradient: AppColors.primaryBgGradient(),
-        //         borderRadius: BorderRadius.circular(8)),
-        //     child: Column(
-        //       mainAxisSize: MainAxisSize.min,
-        //       children: List.generate(
-        //         5,
-        //         (index) => Padding(
-        //           padding: EdgeInsets.symmetric(vertical: 2.px),
-        //           child: SizedBox(
-        //             width: 30.px,
-        //             height: 30.px,
-        //             child: NeumorphicButton(
-        //               style: NeumorphicStyle(
-        //                 shape: NeumorphicShape.convex,
-        //                 color: const Color.fromARGB(137, 0, 0, 0),
-        //                 border: NeumorphicBorder(
-        //                     color: Colors.black, width: 2.px),
-        //                 boxShape: const NeumorphicBoxShape.circle(),
-        //               ),
-        //               padding: EdgeInsets.zero,
-        //               child: Center(
-        //                 child: Text(
-        //                   (index - 2).toString(),
-        //                   style: TextStyle(
-        //                     fontSize: 11.px, // Fixed font size
-        //                     color: Colors.white,
-        //                   ),
-        //                 ),
-        //               ),
-        //             ),
-        //           ),
-        //         ),
-        //       ),
-        //     )),
-        Flexible(
-          child: Column(
-            spacing: 8,
-            children: [
-              buildSwitch("Echo", echo, (v) => setState(() => echo = v)),
-              buildSwitch("Reverb", reverb, (v) => setState(() => reverb = v)),
-              buildSwitch(
-                "Distortion",
-                distortion,
-                (v) => setState(() => distortion = v),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Flexible(
+              child: Column(
+                spacing: 10,
+                children: [
+                  Transform(
+                    alignment: FractionalOffset.center,
+                    transform: new Matrix4.identity()
+                      ..rotateZ(270 * 3.1415927 / 180),
+                    child: Column(
+                      spacing: 5,
+                      children: [
+                        SliderTheme(
+                          data: const SliderThemeData(
+                            thumbShape: AppSliderShape(thumbRadius: 10),
+                          ),
+                          child: Slider(
+                            value: pitch,
+                            min: 0.5,
+                            max: 2.0,
+                            activeColor: Colors.black54,
+                            inactiveColor: Colors.black54,
+                            onChanged: (v) {
+                              setState(() => pitch = v);
+                            },
+                          ),
+                        ),
+                        SliderTheme(
+                          data: const SliderThemeData(
+                            thumbShape: AppSliderShape(thumbRadius: 10),
+                          ),
+                          child: Slider(
+                            value: tempo,
+                            min: 0.5,
+                            max: 2.0,
+                            activeColor: Colors.black54,
+                            inactiveColor: Colors.black54,
+                            onChanged: (v) {
+                              setState(() => tempo = v);
+                            },
+                          ),
+                        ),
+                        SliderTheme(
+                          data: const SliderThemeData(
+                            thumbShape: AppSliderShape(thumbRadius: 10),
+                          ),
+                          child: Slider(
+                            value: formant,
+                            min: 0.5,
+                            max: 2.0,
+                            activeColor: Colors.black54,
+                            inactiveColor: Colors.black54,
+                            onChanged: (v) {
+                              setState(() => formant = v);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Row(
+                      spacing: 8,
+                      mainAxisSize: MainAxisSize.max,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        SizedBox(
+                          height: 28,
+                          child: Text(
+                            "Pitch\n${pitch.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                                fontSize: 7.4, color: Colors.white),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        SizedBox(
+                          height: 28,
+                          child: Text(
+                            "Tempo\n${tempo.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                                fontSize: 7.4, color: Colors.white),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        SizedBox(
+                          height: 28,
+                          child: Text(
+                            "Reverb\n${formant.toStringAsFixed(2)}",
+                            style: const TextStyle(
+                                fontSize: 7.4, color: Colors.white),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+            // Container(
+            //     padding: const EdgeInsets.only(
+            //         top: 3, bottom: 3, left: 10, right: 10),
+            //     decoration: BoxDecoration(
+            //         // gradient: AppColors.primaryBgGradient(),
+            //         borderRadius: BorderRadius.circular(8)),
+            //     child: Column(
+            //       mainAxisSize: MainAxisSize.min,
+            //       children: List.generate(
+            //         5,
+            //         (index) => Padding(
+            //           padding: EdgeInsets.symmetric(vertical: 2.px),
+            //           child: SizedBox(
+            //             width: 30.px,
+            //             height: 30.px,
+            //             child: NeumorphicButton(
+            //               style: NeumorphicStyle(
+            //                 shape: NeumorphicShape.convex,
+            //                 color: const Color.fromARGB(137, 0, 0, 0),
+            //                 border: NeumorphicBorder(
+            //                     color: Colors.black, width: 2.px),
+            //                 boxShape: const NeumorphicBoxShape.circle(),
+            //               ),
+            //               padding: EdgeInsets.zero,
+            //               child: Center(
+            //                 child: Text(
+            //                   (index - 2).toString(),
+            //                   style: TextStyle(
+            //                     fontSize: 11.px, // Fixed font size
+            //                     color: Colors.white,
+            //                   ),
+            //                 ),
+            //               ),
+            //             ),
+            //           ),
+            //         ),
+            //       ),
+            //     )),
+            Flexible(
+              child: Column(
+                spacing: 8,
+                children: [
+                  buildSwitch("Echo", echo, (v) => setState(() => echo = v)),
+                  buildSwitch(
+                      "Reverb", reverb, (v) => setState(() => reverb = v)),
+                  buildSwitch(
+                    "Distortion",
+                    distortion,
+                    (v) => setState(() => distortion = v),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
-    ),
-  );
+      );
 
   Widget buildSwitch(String label, bool value, void Function(bool) onChanged) {
     return Row(
       children: [
-        Text(label, textAlign: TextAlign.left),
+        Text(
+          label,
+          textAlign: TextAlign.left,
+          style: TextStyle(color: Colors.white),
+        ),
         const Spacer(),
         AppToggleSwitch(
           value: value,

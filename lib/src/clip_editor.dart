@@ -73,24 +73,56 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
   }
 
   Future<void> _updateVideo(String newPath) async {
-    // Delete previous temp video if not original and exists
-    if (_videoPath != widget.videoFilePath &&
-        _videoPath != newPath &&
-        File(_videoPath).existsSync()) {
-      try {
-        File(_videoPath).deleteSync();
-      } catch (e) {
-        print("Failed to delete temp file: $_videoPath");
+    try {
+      // Validate new video file
+      final File newVideoFile = File(newPath);
+      if (!await newVideoFile.exists()) {
+        setState(() {
+          _status = 'Error: New video file does not exist';
+          isLoading = false;
+        });
+        return;
       }
+
+      // Clean up previous temp files
+      if (_videoPath != widget.videoFilePath && File(_videoPath).existsSync()) {
+        try {
+          await File(_videoPath).delete();
+        } catch (e) {
+          debugPrint("Failed to delete temp file: $_videoPath, error: $e");
+        }
+      }
+
+      // Dispose existing controller
+      await _controller?.pause();
+      await _controller?.dispose();
+      _controller = null;
+
+      // Load new video
+      _videoPath = newPath;
+      _tempFiles.add(newPath);
+
+      await _trimmer.loadVideo(videoFile: newVideoFile);
+      _controller = _trimmer.videoPlayerController;
+
+      if (_controller != null) {
+        await _controller!.initialize();
+        setState(() {
+          _status = 'Video updated successfully';
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          _status = 'Error: Failed to initialize new video controller';
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _status = 'Error updating video: $e';
+        isLoading = false;
+      });
     }
-
-    _tempFiles.add(newPath); // Track new temp video
-
-    _controller?.dispose();
-    await _trimmer.loadVideo(videoFile: File(newPath));
-    _controller = _trimmer.videoPlayerController;
-    _videoPath = newPath;
-    setState(() {});
   }
 
   Future<String?> applyFilter(String inputPath, String filterType) async {
@@ -120,7 +152,7 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
     }
 
     final command =
-        '-i "$inputPath" -vf $filterCommand -preset ultrafast -y "$outputPath"';
+        '-i "$inputPath" -vf $filterCommand -preset fast -threads 2 -y "$outputPath"';
 
     await FFmpegKit.execute(command);
     return outputPath;
@@ -194,7 +226,9 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
                 aspectRatio: _controller!.value.aspectRatio,
                 child: VideoPlayer(_controller!),
               ),
-            ),
+            )
+          else
+            CircularProgressIndicator(),
           const SizedBox(height: 16),
           Text(_status, style: const TextStyle(fontSize: 16)),
           const SizedBox(height: 16),
@@ -214,6 +248,10 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
                   : FloatingActionButton(
                       backgroundColor: Colors.black12,
                       onPressed: () {
+                        print("================");
+                        print(_videoPath);
+                        print("================");
+
                         setState(() {
                           _controller!.value.isPlaying
                               ? _controller!.pause()
@@ -301,6 +339,7 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
               icon: const Icon(Icons.music_note_rounded),
               tooltip: 'Voice Modulation',
               onPressed: () async {
+                _controller?.pause();
                 final result = await Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -309,23 +348,19 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
                       ),
                     ));
 
-               
                 if (result != null && result is String) {
-                   setState(() {
-                  isLoading = true;
-                });
-                  _updateVideo(result);
-                  _status = 'Video processed: $result';
-
+                  setState(() {
+                    isLoading = true;
+                    _status = 'Updating video with modulated audio...';
+                  });
+                  await _updateVideo(result);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Modulated video: $result')),
                   );
-                  
                   setState(() {
-                  isLoading = true;
-                });
+                    isLoading = false;
+                  });
                 }
-
               },
             ),
             IconButton(
@@ -391,7 +426,18 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
 
   @override
   void dispose() {
+    _controller?.pause();
     _controller?.dispose();
+    _trimmer.dispose();
+    for (var path in _tempFiles) {
+      if (File(path).existsSync()) {
+        try {
+          File(path).deleteSync();
+        } catch (e) {
+          debugPrint("Failed to delete temp file: $path, error: $e");
+        }
+      }
+    }
     super.dispose();
   }
 }
