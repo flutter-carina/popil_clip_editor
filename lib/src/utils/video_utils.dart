@@ -11,7 +11,7 @@ Future<String?> mergeVideosSideBySide(
 
    final command = '-i "$video1Path" -i "$video2Path" '
         '-filter_complex "[0:v]scale=-1:720[vid1];[1:v]scale=-1:720[vid2];[vid1][vid2]hstack=inputs=2[v]" '
-        '-map "[v]" -c:v libx264 -crf 23 -preset ultrafast "$outputPath"';
+        '-map "[v]" -map "0:a?" -c:v libx264 -crf 23 -preset ultrafast "$outputPath"';
 
     final session = await FFmpegKit.execute(command);
 
@@ -26,3 +26,4 @@ Future<String?> mergeVideosSideBySide(
     return null;
   }
 }
+

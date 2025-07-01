@@ -236,8 +236,6 @@ class _PopilClipEditorState extends State<PopilClipEditor> {
             Column(
               children: [
                 LinearProgressIndicator(value: _exportProgress),
-                const SizedBox(height: 4),
-                Text('${(_exportProgress * 100).toStringAsFixed(1)}%'),
               ],
             ),
           if (_controller != null && _controller!.value.isInitialized)

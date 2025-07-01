@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:popil_clip_editor/src/widgets/app_slider_shape.dart';
-import '../popil_clip_editor.dart';
 import 'widgets/app_toggle_switch.dart';
 
 class VoiceModulationEditor extends StatefulWidget {
@@ -28,172 +27,46 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
   String? outputAudio;
   String? outputVideo;
   bool isExtracting = true;
-
-  final List<String> presets = ['None', 'Robot', 'Alien', 'Monster', 'Radio'];
+  bool isExporting = false;
 
   final player = AudioPlayer();
 
-  void applyPreset(String preset) {
-    switch (preset) {
-      case 'Robot':
-        pitch = 0.7;
-        tempo = 0.9;
-        echo = true;
-        distortion = true;
-        break;
-      case 'Alien':
-        pitch = 1.5;
-        tempo = 1.0;
-        echo = true;
-        reverb = true;
-        break;
-      case 'Monster':
-        pitch = 0.5;
-        tempo = 0.8;
-        reverb = true;
-        break;
-      case 'Radio':
-        pitch = 1.0;
-        tempo = 1.0;
-        distortion = true;
-        break;
-      case 'None':
-        pitch = 1.0;
-        tempo = 1.0;
-        formant = 1.0;
-        echo = false;
-        reverb = false;
-        distortion = false;
-        break;
-    }
-    setState(() {});
-  }
-
-  Future<void> extractAudioFromVideo() async {
-    setState(() {
-      isExtracting = true;
-    });
-
-    final dir = await getTemporaryDirectory();
-    extractedAudio = '${dir.path}/extracted_audio.mp3';
-
-    final cmd = '-y -i "${widget.videoPath}" -vn -acodec mp3 "$extractedAudio"';
-    final session = await FFmpegKit.execute(cmd);
-
-    final returnCode = await session.getReturnCode();
-    debugPrint('FFmpeg return code: $returnCode');
-
-    final outputFile = File(extractedAudio!);
-    final fileExists = await outputFile.exists();
-    debugPrint('Extracted file exists: $fileExists');
-
-    if (fileExists) {
-      final fileStat = await outputFile.stat();
-      debugPrint('Extracted audio size: ${fileStat.size} bytes');
-    }
-
-    if (returnCode?.isValueSuccess() != true || !fileExists) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to extract audio from video')),
-      );
-      setState(() {
-        isExtracting = false;
-      });
-      return;
-    }
-
-    setState(() {
-      isExtracting = false;
-    });
-  }
-
-  Future<void> processAudio() async {
-    if (extractedAudio == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No audio extracted from video')),
-      );
-      return;
-    }
-
-    final dir = await getTemporaryDirectory();
-    outputAudio = '${dir.path}/modulated_audio.mp3';
-
-    String filters = 'asetrate=44100*${pitch.toStringAsFixed(2)},';
-    filters += 'atempo=${tempo.toStringAsFixed(2)}';
-
-    if (echo) {
-      filters += ',aecho=0.8:0.88:6:0.4';
-    }
-    if (reverb) {
-      filters += ',aareverb';
-    }
-    if (distortion) {
-      filters += ',acrusher=level_in=1:level_out=1:bits=8:mode=log';
-    }
-
-    final cmd =
-        '-y -i "$extractedAudio" -af "$filters" -c:a libmp3lame -f mp3 "$outputAudio"';
-
-    var session = await FFmpegKit.execute(cmd);
-
-    final file = File(outputAudio!);
-    if (!await file.exists() || await file.length() == 0) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Audio processing failed')));
-      return;
-    }
-
-    final returnCode = await session.getReturnCode();
-    print("Return Code: $returnCode");
-
-    setState(() {});
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Processed audio to: $outputAudio')));
-  }
-
-  Future<void> mergeAudioWithVideo() async {
-    if (outputAudio == null) return;
-
-    final dir = await getTemporaryDirectory();
-    final aacPath = '${dir.path}/converted_audio.aac';
-    outputVideo = '${dir.path}/modulated_video.mp4';
-
-    // Step 1: Convert MP3 to AAC
-    final convertCmd = '-y -i "$outputAudio" -c:a aac -b:a 128k "$aacPath"';
-    var convertSession = await FFmpegKit.execute(convertCmd);
-    final convertReturnCode = await convertSession.getReturnCode();
-
-    if (convertReturnCode?.isValueSuccess() != true) {
-      final log = await convertSession.getAllLogsAsString();
-      debugPrint('Audio conversion failed:\n$log');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to convert audio to AAC')),
-      );
-      return;
-    }
-
-    // Step 2: Merge converted AAC with video
-    final mergeCmd =
-        '-y -i "${widget.videoPath}" -i "$aacPath" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "$outputVideo"';
-    var mergeSession = await FFmpegKit.execute(mergeCmd);
-    final mergeReturnCode = await mergeSession.getReturnCode();
-
-    if (mergeReturnCode?.isValueSuccess() != true) {
-      final log = await mergeSession.getAllLogsAsString();
-      debugPrint('Merging failed:\n$log');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to merge audio with video')),
-      );
-      return;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Processed video saved to:\n$outputVideo')),
-    );
-    setState(() {});
-  }
+  // final List<String> presets = ['None', 'Robot', 'Alien', 'Monster', 'Radio'];
+  // void applyPreset(String preset) {
+  //   switch (preset) {
+  //     case 'Robot':
+  //       pitch = 0.7;
+  //       tempo = 0.9;
+  //       echo = true;
+  //       distortion = true;
+  //       break;
+  //     case 'Alien':
+  //       pitch = 1.5;
+  //       tempo = 1.0;
+  //       echo = true;
+  //       reverb = true;
+  //       break;
+  //     case 'Monster':
+  //       pitch = 0.5;
+  //       tempo = 0.8;
+  //       reverb = true;
+  //       break;
+  //     case 'Radio':
+  //       pitch = 1.0;
+  //       tempo = 1.0;
+  //       distortion = true;
+  //       break;
+  //     case 'None':
+  //       pitch = 1.0;
+  //       tempo = 1.0;
+  //       formant = 1.0;
+  //       echo = false;
+  //       reverb = false;
+  //       distortion = false;
+  //       break;
+  //   }
+  //   setState(() {});
+  // }
 
   @override
   void initState() {
@@ -206,16 +79,16 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     return Scaffold(
       backgroundColor: Color(0xFF2D3036),
       appBar: AppBar(title: const Text('Voice Modulator')),
-      body: isExtracting
-          ? const Center(
+      body: isExtracting || isExporting
+          ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 16),
                   Text(
-                    'Extracting audio...',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                    isExporting ? "Exporting..." : 'Extracting audio...',
+                    style: const TextStyle(color: Colors.yellow, fontSize: 16),
                   ),
                 ],
               ),
@@ -258,30 +131,45 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                       style: TextStyle(color: Colors.black),
                     ),
                   ),
+                  const SizedBox(height: 20),
                   if (outputAudio != null)
                     ListTile(
-                      onTap: () => playAudio(outputAudio!),
-                      leading: IconButton(
-                        icon: Icon(
-                          player.playing ? Icons.stop : Icons.play_arrow,
-                          color: Colors.white,
-                        ),
-                        onPressed: () => playAudio(outputAudio!),
+                      tileColor: Colors.black54,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
                       ),
+                      onTap: () => playAudio(outputAudio!),
+                      // leading: IconButton(
+                      //   icon: Icon(
+                      //     player.playing ? Icons.stop : Icons.play_arrow,
+                      //     color: Colors.white,
+                      //   ),
+                      //   onPressed: () => playAudio(outputAudio!),
+                      // ),
                       title: Text(
                         outputAudio?.split("/").last ?? '',
                         overflow: TextOverflow.ellipsis,
                         style:
                             const TextStyle(color: Colors.white, fontSize: 16),
                       ),
-                      trailing: IconButton(
+                      trailing: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFFEA500),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                        ),
                         onPressed: () async {
+                          setState(() {
+                            isExporting = true;
+                          });
                           await mergeAudioWithVideo();
+                          setState(() {
+                            isExporting = false;
+                          });
                           Navigator.pop(context, outputVideo);
                         },
-                        icon: Icon(
-                          Icons.arrow_forward_rounded,
-                          color: Colors.white,
+                        child: const Text(
+                          "Export",
+                          style: TextStyle(color: Colors.black),
                         ),
                       ),
                     ),
@@ -409,44 +297,6 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                 ],
               ),
             ),
-            // Container(
-            //     padding: const EdgeInsets.only(
-            //         top: 3, bottom: 3, left: 10, right: 10),
-            //     decoration: BoxDecoration(
-            //         // gradient: AppColors.primaryBgGradient(),
-            //         borderRadius: BorderRadius.circular(8)),
-            //     child: Column(
-            //       mainAxisSize: MainAxisSize.min,
-            //       children: List.generate(
-            //         5,
-            //         (index) => Padding(
-            //           padding: EdgeInsets.symmetric(vertical: 2.px),
-            //           child: SizedBox(
-            //             width: 30.px,
-            //             height: 30.px,
-            //             child: NeumorphicButton(
-            //               style: NeumorphicStyle(
-            //                 shape: NeumorphicShape.convex,
-            //                 color: const Color.fromARGB(137, 0, 0, 0),
-            //                 border: NeumorphicBorder(
-            //                     color: Colors.black, width: 2.px),
-            //                 boxShape: const NeumorphicBoxShape.circle(),
-            //               ),
-            //               padding: EdgeInsets.zero,
-            //               child: Center(
-            //                 child: Text(
-            //                   (index - 2).toString(),
-            //                   style: TextStyle(
-            //                     fontSize: 11.px, // Fixed font size
-            //                     color: Colors.white,
-            //                   ),
-            //                 ),
-            //               ),
-            //             ),
-            //           ),
-            //         ),
-            //       ),
-            //     )),
             Flexible(
               child: Column(
                 spacing: 8,
@@ -485,9 +335,135 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
     );
   }
 
+  Future<void> extractAudioFromVideo() async {
+    setState(() {
+      isExtracting = true;
+    });
+
+    final dir = await getTemporaryDirectory();
+    extractedAudio = '${dir.path}/extracted_audio.mp3';
+
+    final cmd = '-y -i "${widget.videoPath}" -vn -acodec mp3 "$extractedAudio"';
+    final session = await FFmpegKit.execute(cmd);
+
+    final returnCode = await session.getReturnCode();
+    debugPrint('FFmpeg return code: $returnCode');
+
+    final outputFile = File(extractedAudio!);
+    final fileExists = await outputFile.exists();
+    debugPrint('Extracted file exists: $fileExists');
+
+    if (fileExists) {
+      final fileStat = await outputFile.stat();
+      debugPrint('Extracted audio size: ${fileStat.size} bytes');
+    }
+
+    if (returnCode?.isValueSuccess() != true || !fileExists) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to extract audio from video')),
+      );
+      setState(() {
+        isExtracting = false;
+      });
+
+      return;
+    }
+
+    setState(() {
+      isExtracting = false;
+    });
+  }
+
+  Future<void> processAudio() async {
+    if (extractedAudio == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No audio extracted from video')),
+      );
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    outputAudio = '${dir.path}/modulated_audio.mp3';
+
+    String filters = 'asetrate=44100*${pitch.toStringAsFixed(2)},';
+    filters += 'atempo=${tempo.toStringAsFixed(2)}';
+
+    if (echo) {
+      filters += ',aecho=0.8:0.88:6:0.4';
+    }
+    if (reverb) {
+      filters += ',aareverb';
+    }
+    if (distortion) {
+      filters += ',acrusher=level_in=1:level_out=1:bits=8:mode=log';
+    }
+
+    final cmd =
+        '-y -i "$extractedAudio" -af "$filters" -c:a libmp3lame -f mp3 "$outputAudio"';
+
+    var session = await FFmpegKit.execute(cmd);
+
+    final file = File(outputAudio!);
+    if (!await file.exists() || await file.length() == 0) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Audio processing failed')));
+      return;
+    }
+
+    final returnCode = await session.getReturnCode();
+    print("Return Code: $returnCode");
+
+    setState(() {});
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Processed audio to: $outputAudio')));
+  }
+
+  Future<void> mergeAudioWithVideo() async {
+    if (outputAudio == null) return;
+
+    final dir = await getTemporaryDirectory();
+    final aacPath = '${dir.path}/converted_audio.aac';
+    outputVideo = '${dir.path}/modulated_video.mp4';
+
+    // Step 1: Convert MP3 to AAC
+    final convertCmd = '-y -i "$outputAudio" -c:a aac -b:a 128k "$aacPath"';
+    var convertSession = await FFmpegKit.execute(convertCmd);
+    final convertReturnCode = await convertSession.getReturnCode();
+
+    if (convertReturnCode?.isValueSuccess() != true) {
+      final log = await convertSession.getAllLogsAsString();
+      debugPrint('Audio conversion failed:\n$log');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to convert audio to AAC')),
+      );
+      return;
+    }
+
+    // Step 2: Merge converted AAC with video
+    final mergeCmd =
+        '-y -i "${widget.videoPath}" -i "$aacPath" -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "$outputVideo"';
+    var mergeSession = await FFmpegKit.execute(mergeCmd);
+    final mergeReturnCode = await mergeSession.getReturnCode();
+
+    if (mergeReturnCode?.isValueSuccess() != true) {
+      final log = await mergeSession.getAllLogsAsString();
+      debugPrint('Merging failed:\n$log');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to merge audio with video')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Processed video saved to:\n$outputVideo')),
+    );
+    setState(() {});
+  }
+
   @override
   void dispose() {
-    // TODO: implement dispose
     player.dispose();
     super.dispose();
   }
