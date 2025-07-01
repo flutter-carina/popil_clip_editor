@@ -139,13 +139,13 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                         borderRadius: BorderRadius.circular(10),
                       ),
                       onTap: () => playAudio(outputAudio!),
-                      // leading: IconButton(
-                      //   icon: Icon(
-                      //     player.playing ? Icons.stop : Icons.play_arrow,
-                      //     color: Colors.white,
-                      //   ),
-                      //   onPressed: () => playAudio(outputAudio!),
-                      // ),
+                      leading: IconButton(
+                        icon: Icon(
+                          player.playing ? Icons.stop : Icons.play_arrow,
+                          color: const Color(0xFFFEA500),
+                        ),
+                        onPressed: () => playAudio(outputAudio!),
+                      ),
                       title: Text(
                         outputAudio?.split("/").last ?? '',
                         overflow: TextOverflow.ellipsis,
@@ -155,9 +155,11 @@ class _VoiceModulationEditorState extends State<VoiceModulationEditor> {
                       trailing: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFFEA500),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          
+                          // padding: const EdgeInsets.symmetric(vertical: 16),
                         ),
                         onPressed: () async {
+                          player.pause();
                           setState(() {
                             isExporting = true;
                           });
